@@ -1,6 +1,7 @@
 #ifndef MYSTDIO_H
 #define MYSTDIO_H	1
 
+#include <stdlib.h>
 #include <fcntl.h>
 #include <sys/file.h>
 #include <sys/types.h>
