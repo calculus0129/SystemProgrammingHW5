@@ -163,29 +163,32 @@ myFILE *myfopen(const char *pathname, const char *mode) {
     }
     ret->fd = fd;
     ret->mode_flag = mode_flag;
+    ret->last_operation = 0;
     return ret;
 }
 
 int myfclose(myFILE *stream){
+    //while(!lockThisFileAsShared(stream)); // We do not need while(!unlockThisFile(stream));, as the lock is cleared when fd is closed.
     if (myfflush(stream) || close(stream->fd)) return EOF;
     free(stream);
     return 0;
 }
 
 int myfseek(myFILE *stream, int bufpos, int whence){
+    while(!lockThisFileAsShared(stream));
     if (lseek(stream->fd, bufpos, whence)<0) return EOF;
+    while(!unlockThisFile(stream));
     return 0;
 }
 
 int myfread(void *ptr, int size, int nmemb, myFILE *stream){
     // Check if the stream is readable.
     if(stream->mode_flag>1 && stream->mode_flag<5) return EOF;
+    while(!lockThisFileAsExclusive(stream)); // Nyum Nyum
     // _wflush() if the last operation was writing.
     if(stream->mode_flag>1 && stream->last_operation==1) {
-        while(!lockThisFileAsExclusive(stream)); // Nyum Nyum
         _wflush(stream);
     }
-    while(!lockThisFileAsShared(stream));
     // ret: # of actually written bytes.
     // t: # of size of additional buffer filled.
     int siz=size*nmemb, ret=_rflush(stream, (char*)ptr, siz), i, t, q, r, e;
@@ -197,7 +200,7 @@ int myfread(void *ptr, int size, int nmemb, myFILE *stream){
             q = ret/size, r = ret%size;
             stream->bufpos = MIN(stream->bufpos+r, BUFSIZE);
             for(i=stream->bufpos-1,e=r;i>=e;--i) stream->rdbuffer[i] = stream->rdbuffer[i-r];
-            myfseek(stream, -r, SEEK_END);
+            lseek(stream->fd, -r, SEEK_END);
             for(i=0, e=MIN(r, BUFSIZE);i<e;++i) {
                 stream->rdbuffer[i] = ((char*)ptr)[size*q+i];
                 ((char*)ptr)[size*q+i] = 0; // just in case. // consider the original data that are deleted later!
@@ -228,8 +231,15 @@ int myfwrite(const void *ptr, int size, int nmemb, myFILE *stream){
     return ret;
 }
 
-int myfflush(myFILE *stream){
-
+int myfflush(myFILE *stream) {
+    while(lockThisFileAsExclusive(stream));
+    if(stream->last_operation==1) {
+        _wflush(stream);
+        stream->last_operation=0;
+    }
+    stream->bufpos=0;
+    while(unlockThisFile(stream));
+    return 0;
 }
 
 #endif // mystdio.h included
