@@ -130,18 +130,18 @@ static int _wfill(myFILE* stream, const char *ptr, int size) {
  * "r+": Open for reading and writing. The stream is positioned at the beginning of the file.
  * => O_RDWR
  * "w": Truncate file to zero length or create text file for writing. The stream is positioned at the beginning of the file.
- * => O_TRUNC | O_WRONLY
- * "w+": Open for reading and writing. The file is created if it does not exist, otherwise it is truncated. The stream is positioned at the beginning of the file.
  * => O_TRUNC | O_CREAT | O_WRONLY, 0x777
+ * "w+": Open for reading and writing. The file is created if it does not exist, otherwise it is truncated. The stream is positioned at the beginning of the file.
+ * => O_TRUNC | O_CREAT | O_RDWR, 0x777
  * "a": Open for appending (writing at end of file). The file is created if it does not exist. The stream is positioned at the end of the file.
  * => O_APPEND | O_CREAT | O_WRONLY, 0x777
  * "a+": Open for reading and appending (writing at end of file). The file is created if it does not exist. Output is always appended to the end of the file. POSIX is silent on what the initial read position is when using this mode, but, the stream must be positioned at the end of the file in this work.
  * => O_APPEND | O_CREAT | O_RDWR, 0x777
 */
 myFILE *myfopen(const char *pathname, const char *mode) {
-    myFILE* ret = (myFILE*) malloc(sizeof(myFILE));
+    myFILE* ret = malloc(sizeof(myFILE)); //(myFILE*) 
     if(strlen(mode)>2 || !strlen(mode)) return NULL;
-    int flags = 0, mode_flag, fd;
+    int mode_flag, fd;
     switch(mode[0]) {
         case 'r':
             mode_flag=0;
@@ -150,8 +150,8 @@ myFILE *myfopen(const char *pathname, const char *mode) {
             break;
         case 'w':
             mode_flag=2;
-            if(strlen(mode)==1) fd = open(pathname, O_TRUNC | O_WRONLY);
-            else { fd = open(pathname, O_TRUNC | O_CREAT | O_WRONLY, 0x777); mode_flag|=1; }
+            if(strlen(mode)==1) fd = open(pathname, O_TRUNC | O_CREAT | O_WRONLY, 0x777);
+            else { fd = open(pathname, O_TRUNC | O_CREAT | O_RDWR, 0x777); mode_flag|=1; }
             break;
         case 'a':
             mode_flag=4;
@@ -161,9 +161,12 @@ myFILE *myfopen(const char *pathname, const char *mode) {
         default:
             return NULL;
     }
+    if(fd<0) return NULL;
     ret->fd = fd;
     ret->mode_flag = mode_flag;
+    ret->offset = 0; // Just in case.
     ret->last_operation = 0;
+    ret->bufpos = 0;
     return ret;
 }
 
@@ -177,7 +180,7 @@ int myfclose(myFILE *stream){
 int myfseek(myFILE *stream, int bufpos, int whence){
     while(!lockThisFileAsShared(stream));
     if (lseek(stream->fd, bufpos, whence)<0) return EOF;
-    while(!unlockThisFile(stream));
+    unlockThisFile(stream); //while(!unlockThisFile(stream));
     return 0;
 }
 
@@ -191,7 +194,7 @@ int myfread(void *ptr, int size, int nmemb, myFILE *stream){
     }
     // ret: # of actually written bytes.
     // t: # of size of additional buffer filled.
-    int siz=size*nmemb, ret=_rflush(stream, (char*)ptr, siz), i, t, q, r, e;
+    int siz=size*nmemb, ret=_rflush(stream, (char*)ptr, siz), i, q, r, e;
 
     while(ret<siz && _rfill(stream)>0) ret+=_rflush(stream, (char*)ptr+ret, siz-ret);
     if(_rfill(stream)==0) { // cannot read anymore
@@ -209,19 +212,30 @@ int myfread(void *ptr, int size, int nmemb, myFILE *stream){
         }
     }
     stream->last_operation=0;
-    while(!unlockThisFile(stream));
+    unlockThisFile(stream); // while(!unlockThisFile(stream));
     return ret;
 }
 
 int myfwrite(const void *ptr, int size, int nmemb, myFILE *stream){
     if(stream->mode_flag<2) return EOF;
+    int siz = size*nmemb;
+    if(siz==0) return 0;
     while(!lockThisFileAsExclusive(stream));
+    /*
+    char tmp[2]="1";
+    int works = write(stream->fd, tmp, 1);
+    
+    if(works<0) return EOF;
+    lseek(stream->fd, -works, SEEK_CUR);
+    tmp[0] = '\0';
+    works = write(stream->fd, tmp, 1);
+    */
     // i.e. last operation was reading or nothing
     if(stream->last_operation==0 && stream->bufpos!=0) {
         myfseek(stream, -stream->bufpos, SEEK_CUR);
         stream->bufpos=0;
     }
-    int siz = size*nmemb, ret=_wfill(stream, (char*)ptr, siz), i;
+    int ret=_wfill(stream, (char*)ptr, siz);
     while(ret<siz) {
         _wflush(stream);
         ret += _wfill(stream, ((char*)ptr)+ret, siz-ret);
@@ -232,13 +246,16 @@ int myfwrite(const void *ptr, int size, int nmemb, myFILE *stream){
 }
 
 int myfflush(myFILE *stream) {
-    while(lockThisFileAsExclusive(stream));
+    //while(lockThisFileAsExclusive(stream));
     if(stream->last_operation==1) {
-        _wflush(stream);
+        if(_wflush(stream)==-1) {
+            //while(unlockThisFile(stream));
+            return -1;
+        }
         stream->last_operation=0;
     }
     stream->bufpos=0;
-    while(unlockThisFile(stream));
+    //while(unlockThisFile(stream));
     return 0;
 }
 
