@@ -117,9 +117,8 @@ static int _rfill(myFILE* stream) {
 */
 static int _wfill(myFILE* stream, const char *ptr, int size) {
     int i=stream->bufpos,j=0,e=MIN(BUFSIZE-i, size);
-    for(;j<e;++j) {
-        stream->wrbuffer[i+j]=ptr[j];
-    }
+    stream->bufpos+=e;
+    for(;j<e;++j) stream->wrbuffer[i+j]=ptr[j];
     return e;
 }
 
@@ -171,21 +170,26 @@ myFILE *myfopen(const char *pathname, const char *mode) {
 }
 
 int myfclose(myFILE *stream){
-    //while(!lockThisFileAsShared(stream)); // We do not need while(!unlockThisFile(stream));, as the lock is cleared when fd is closed.
-    if (myfflush(stream) || close(stream->fd)) return EOF;
+    if(stream==NULL) return EOF;
+    while(!lockThisFileAsExclusive(stream)); // We do not need while(!unlockThisFile(stream));, as the lock is cleared when fd is closed.
+    if (myfflush(stream)) return EOF;
+    while(!unlockThisFile(stream));
+    if (close(stream->fd)) return EOF;
     free(stream);
     return 0;
 }
 
 int myfseek(myFILE *stream, int bufpos, int whence){
-    while(!lockThisFileAsShared(stream));
+    if(stream==NULL) return EOF;
+    while(!lockThisFileAsExclusive(stream));
     if (lseek(stream->fd, bufpos, whence)<0) return EOF;
-    unlockThisFile(stream); //while(!unlockThisFile(stream));
+    while(!unlockThisFile(stream)); //while(!unlockThisFile(stream));
     return 0;
 }
 
 int myfread(void *ptr, int size, int nmemb, myFILE *stream){
     // Check if the stream is readable.
+    if(stream==NULL) return EOF;
     if(stream->mode_flag>1 && stream->mode_flag<5) return EOF;
     while(!lockThisFileAsExclusive(stream)); // Nyum Nyum
     // _wflush() if the last operation was writing.
@@ -212,27 +216,20 @@ int myfread(void *ptr, int size, int nmemb, myFILE *stream){
         }
     }
     stream->last_operation=0;
-    unlockThisFile(stream); // while(!unlockThisFile(stream));
+    while(!unlockThisFile(stream));
+    //unlockThisFile(stream);//while(!unlockThisFile(stream));
     return ret;
 }
 
 int myfwrite(const void *ptr, int size, int nmemb, myFILE *stream){
+    if(stream==NULL) return EOF;
     if(stream->mode_flag<2) return EOF;
     int siz = size*nmemb;
     if(siz==0) return 0;
     while(!lockThisFileAsExclusive(stream));
-    /*
-    char tmp[2]="1";
-    int works = write(stream->fd, tmp, 1);
-    
-    if(works<0) return EOF;
-    lseek(stream->fd, -works, SEEK_CUR);
-    tmp[0] = '\0';
-    works = write(stream->fd, tmp, 1);
-    */
     // i.e. last operation was reading or nothing
     if(stream->last_operation==0 && stream->bufpos!=0) {
-        myfseek(stream, -stream->bufpos, SEEK_CUR);
+        lseek(stream->fd, -stream->bufpos, SEEK_CUR);
         stream->bufpos=0;
     }
     int ret=_wfill(stream, (char*)ptr, siz);
@@ -241,21 +238,22 @@ int myfwrite(const void *ptr, int size, int nmemb, myFILE *stream){
         ret += _wfill(stream, ((char*)ptr)+ret, siz-ret);
     }
     stream->last_operation=1;
-    while(!unlockThisFile(stream));
+    while(!unlockThisFile(stream));//unlockThisFile(stream);
     return ret;
 }
 
 int myfflush(myFILE *stream) {
-    //while(lockThisFileAsExclusive(stream));
+    if(stream==NULL) return EOF;
+    while(!lockThisFileAsExclusive(stream));
     if(stream->last_operation==1) {
         if(_wflush(stream)==-1) {
-            //while(unlockThisFile(stream));
+            while(!unlockThisFile(stream));//unlockThisFile(stream);
             return -1;
         }
         stream->last_operation=0;
     }
     stream->bufpos=0;
-    //while(unlockThisFile(stream));
+    while(!unlockThisFile(stream));//unlockThisFile(stream);
     return 0;
 }
 
