@@ -213,27 +213,33 @@ int myfread(void *ptr, int size, int nmemb, myFILE *stream){
     }
     // ret: # of actually written bytes.
     // t: # of size of additional buffer filled.
-    int siz=size*nmemb, ret=_rflush(stream, (char*)ptr, siz), i, q, r, e;
+    char* largebuf = malloc(size*nmemb);
 
-    while(ret<siz && _rfill(stream)>0) ret+=_rflush(stream, (char*)ptr+ret, siz-ret);
+    int siz=size*nmemb, ret=_rflush(stream, largebuf, siz), i, q, r, e;
+    while(ret<siz && _rfill(stream)>0) ret+=_rflush(stream, largebuf+ret, siz-ret);
     if(_rfill(stream)==0) { // cannot read anymore
-        ret+=_rflush(stream, (char*)ptr+ret, siz-ret);
+        ret+=_rflush(stream, largebuf+ret, siz-ret);
         if(ret<siz) {
             q = ret/size, r = ret%size;
             stream->bufpos = MIN(stream->bufpos+r, BUFSIZE);
             for(i=stream->bufpos-1,e=r;i>=e;--i) stream->rdbuffer[i] = stream->rdbuffer[i-r];
             lseek(stream->fd, -r, SEEK_END);
             for(i=0, e=MIN(r, BUFSIZE);i<e;++i) {
-                stream->rdbuffer[i] = ((char*)ptr)[size*q+i];
-                ((char*)ptr)[size*q+i] = 0; // just in case. // consider the original data that are deleted later!
+                stream->rdbuffer[i] = largebuf[size*q+i];
+                //((char*)ptr)[size*q+i] = 0; // just in case. // consider the original data that are deleted later!
             }
             ret = q*size;
         }
     }
     stream->last_operation=0;
     while(!unlockThisFile(stream));
-    //unlockThisFile(stream);//while(!unlockThisFile(stream));
-    return ret/size;
+    // This is necessary for maintaining the data right after the ptr.
+    for(i=0;i<ret;++i) {
+        ((char*)ptr)[i] = largebuf[i];
+    }
+    free(largebuf);
+    ret/=size;
+    return ret;
 }
 
 int myfwrite(const void *ptr, int size, int nmemb, myFILE *stream){

@@ -1,4 +1,4 @@
-// myfread() + myfflush()
+// myfread() + myfseek() + myfflush()
 #include "../mystdio.h"
 #include <stdio.h>
 
