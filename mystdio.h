@@ -182,6 +182,20 @@ int myfclose(myFILE *stream){
 int myfseek(myFILE *stream, int bufpos, int whence){
     if(stream==NULL) return EOF;
     while(!lockThisFileAsExclusive(stream));
+    
+    //myfflush(stream);
+    if(stream->last_operation==1) {
+        if(_wflush(stream)==-1) {
+            while(!unlockThisFile(stream));//unlockThisFile(stream);
+            return -1;
+        }
+        stream->last_operation=0;
+    }
+    else if(stream->bufpos!=0) {
+        lseek(stream->fd, -stream->bufpos, SEEK_CUR);
+        stream->bufpos=0;
+    }
+
     if (lseek(stream->fd, bufpos, whence)<0) return EOF;
     while(!unlockThisFile(stream)); //while(!unlockThisFile(stream));
     return 0;
@@ -252,7 +266,10 @@ int myfflush(myFILE *stream) {
         }
         stream->last_operation=0;
     }
-    stream->bufpos=0;
+    else if(stream->bufpos!=0) {
+        lseek(stream->fd, -stream->bufpos, SEEK_CUR);
+        stream->bufpos=0;
+    }
     while(!unlockThisFile(stream));//unlockThisFile(stream);
     return 0;
 }
