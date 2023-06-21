@@ -12,14 +12,14 @@ int main() {
         printf("%c", c);
     }
     puts("");
-    //fflush(f);
+    myfflush(f);
     while((t=myfread(yees, 5, 1, f))!=0 && i--) {
         printf("%s", yees);
     }
     i=10;
     while((t=myfread(&pi, sizeof(double), 1, f))!=0 && i--) {
         myfread(&c, sizeof(char), 1, f);
-        //fflush(f);
+        myfflush(f);
         printf("%f%c", pi, c);
     }
     puts("");
@@ -27,13 +27,13 @@ int main() {
     int j;
     // Testing fread()'s reading ability.
     while((t=myfread(pis, sizeof(double), 7, f))!=0 && i--) {
-        //fflush(f);
+        myfflush(f);
         j=0;
         printf("%02d elements: ", t);
-        //fflush(f);
+        myfflush(f);
         while(j<7) printf("%f", pis[j++]);
         puts("");
-        //fflush(f);
+        myfflush(f);
     }
     myfclose(f);
     return 0;
