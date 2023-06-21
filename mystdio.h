@@ -95,7 +95,8 @@ static int _rflush(myFILE* stream, char* ptr, int size) {
     char * c = stream->rdbuffer;
     int ret = MIN(stream->bufpos, size);
     for(size_t i=0;i<ret;++i) ptr[i] = c[i];
-    if(stream->bufpos=stream->bufpos-ret) for(size_t i=ret, e=stream->bufpos; i<e; ++i) stream->rdbuffer[i-ret] = stream->rdbuffer[i];
+    if(stream->bufpos!=ret) for(size_t i=ret, e=stream->bufpos; i<e; ++i) stream->rdbuffer[i-ret] = stream->rdbuffer[i];
+    stream->bufpos-=ret;
     return ret;
 }
 
@@ -182,7 +183,7 @@ int myfclose(myFILE *stream){
 int myfseek(myFILE *stream, int bufpos, int whence){
     if(stream==NULL) return EOF;
     while(!lockThisFileAsExclusive(stream));
-    
+
     //myfflush(stream);
     if(stream->last_operation==1) {
         if(_wflush(stream)==-1) {
@@ -232,7 +233,7 @@ int myfread(void *ptr, int size, int nmemb, myFILE *stream){
     stream->last_operation=0;
     while(!unlockThisFile(stream));
     //unlockThisFile(stream);//while(!unlockThisFile(stream));
-    return ret;
+    return ret/size;
 }
 
 int myfwrite(const void *ptr, int size, int nmemb, myFILE *stream){
@@ -253,7 +254,7 @@ int myfwrite(const void *ptr, int size, int nmemb, myFILE *stream){
     }
     stream->last_operation=1;
     while(!unlockThisFile(stream));//unlockThisFile(stream);
-    return ret;
+    return ret/size;
 }
 
 int myfflush(myFILE *stream) {
