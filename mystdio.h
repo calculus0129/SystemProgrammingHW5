@@ -149,13 +149,13 @@ myFILE *myfopen(const char *pathname, const char *mode) {
             break;
         case 'w':
             mode_flag=2;
-            if(strlen(mode)==1) fd = open(pathname, O_TRUNC | O_CREAT | O_WRONLY, 0x777);
-            else { fd = open(pathname, O_TRUNC | O_CREAT | O_RDWR, 0x777); mode_flag|=1; }
+            if(strlen(mode)==1) fd = open(pathname, O_TRUNC | O_CREAT | O_WRONLY, S_IRWXU);
+            else { fd = open(pathname, O_TRUNC | O_CREAT | O_RDWR, S_IRWXU); mode_flag|=1; }
             break;
         case 'a':
             mode_flag=4;
-            if(strlen(mode)==1) fd = open(pathname, O_APPEND | O_CREAT | O_WRONLY, 0x777);
-            else { fd = open(pathname, O_APPEND | O_CREAT | O_RDWR, 0x777); mode_flag|=1; }
+            if(strlen(mode)==1) fd = open(pathname, O_APPEND | O_CREAT | O_WRONLY, S_IRWXU);
+            else { fd = open(pathname, O_APPEND | O_CREAT | O_RDWR, S_IRWXU); mode_flag|=1; }
             break;
         default:
             return NULL;
