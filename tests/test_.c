@@ -1,4 +1,81 @@
+#include <pthread.h>
+#include "../mystdio.h"
 #include <stdio.h>
+
+#define NUM_THREADS 10000
+
+myFILE *file;
+pthread_mutex_t mutex;
+
+char buffer[20] = "";
+
+void* readThread(void* arg) {
+    int n = *((int*)arg);
+
+    pthread_mutex_lock(&mutex);
+
+    myfseek(file, (n - NUM_THREADS/2) * 10, SEEK_SET);
+    myfread(buffer, sizeof(char), 10, file);
+    buffer[10] = '\0'; // Null-terminate the buffer
+    printf("Read Thread %d: %s\n", n, buffer);
+
+    pthread_mutex_unlock(&mutex);
+    pthread_exit(NULL);
+}
+
+void* writeThread(void* arg) {
+    char data[10] = "AAAAAAAA\n";
+    int n = *((int*)arg);
+
+    pthread_mutex_lock(&mutex);
+
+    myfseek(file, n * 10, SEEK_SET);
+    myfwrite(data, sizeof(char), 10, file);
+    printf("Write Thread %d: %s\n", n, data);
+
+    pthread_mutex_unlock(&mutex);
+    pthread_exit(NULL);
+}
+
+int main() {
+    file = myfopen("data.txt", "w+");
+
+    if (file == NULL) {
+        printf("Failed to open file.\n");
+        return 1;
+    }
+
+    pthread_t threads[NUM_THREADS];
+    int thread_args[NUM_THREADS];
+
+    pthread_mutex_init(&mutex, NULL);
+
+    for (int i = 0; i < NUM_THREADS/2; i++) {
+        thread_args[i] = i;
+        pthread_create(&threads[i], NULL, writeThread, (void*)&thread_args[i]);
+    }
+
+    for (int i = 0; i < NUM_THREADS/2; i++) {
+        pthread_join(threads[i], NULL);
+    }
+
+    for (int i = NUM_THREADS/2; i < NUM_THREADS; i++) {
+        thread_args[i] = i;
+        pthread_create(&threads[i], NULL, readThread, (void*)&thread_args[i]);
+    }
+
+    for (int i = NUM_THREADS/2; i < NUM_THREADS; i++) {
+        pthread_join(threads[i], NULL);
+    }
+
+    pthread_mutex_destroy(&mutex);
+
+    myfclose(file);
+
+    return 0;
+}
+
+/*#include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
 #include "../mystdio.h"
@@ -51,4 +128,4 @@ int main() {
 
 
     return 0;
-}
+}*/
