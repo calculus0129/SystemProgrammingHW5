@@ -1,7 +1,19 @@
-CFLAGS += -Wall -g -O3
-TARGET = pgm
-$(TARGET):	test0.c
-	$(CC) -o $@ $^ $(CFLAGS)
+CFLAGS += -Wall -g -O3 -pthread
+TARGET := $(patsubst test%.c,pgm%,$(wildcard test*.c))
+DEPS = ../mystdio.h
+
+all:	$(TARGET)
+pgm%:	test%.c $(DEPS)
+	$(CC) -o $@ $< $(CFLAGS)
+
+.phony:	clean, ec
+clean:
+	rm -f *.o
+	rm -f $(TARGET)
+
+ec: test*.c # for test
+	echo $(patsubst test%.c,pgm%,$^)
+	echo $(TARGET)
 
 #TARGET := $(patsubst main%.cc,pgm%,$(wildcard main*.cc))
 

@@ -2,7 +2,6 @@
  * Testing: myfopen(), myfwrite(), and myfclose().
 */
 #include "../mystdio.h"
-//#include <stdio.h>
 int main() {
     int i=10;
     myFILE* f = myfopen("test0-output.txt", "w");
