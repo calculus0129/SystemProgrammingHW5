@@ -1,3 +1,6 @@
+// Just an integrated fun testing.
+// Let's search for primes and store it using my library!
+
 #include "../mystdio.h"
 #include <stdio.h>
 #include <math.h>

@@ -1,4 +1,106 @@
+#include <stdio.h>
 #include <pthread.h>
+#include <stdlib.h>
+
+#include "../mystdio.h"
+
+#define NUM_THREADS 10000
+
+myFILE *file;
+pthread_mutex_t mutex;
+
+char buffer[NUM_THREADS * 10 + 1] = "";
+
+void *readThread(void *arg)
+{
+   int n = *((int *)arg);
+
+   // pthread_mutex_lock(&mutex);
+
+   myfseek(file, (n - 2) * 10, SEEK_SET);
+   myfread(buffer, sizeof(char), 10, file);
+   //buffer[10] = '\0'; // Null-terminate the buffer
+   // printf("Read Thread %d: %s\n", n, buffer);
+
+   // pthread_mutex_unlock(&mutex);
+   pthread_exit(NULL);
+}
+
+void *writeThread(void *arg)
+{
+   char data[11] = "ABCDEFGHI\n";
+   int n = *((int *)arg);
+   free(arg);
+   // pthread_mutex_lock(&mutex);
+
+   // myfseek(file, n * 10, SEEK_SET);
+   if (myfwrite(data, sizeof(char), strlen(data), file) == 0)
+   {
+      printf("Write Thread %d: Failed to write.\n", n);
+   }
+   
+   // else
+      // printf("Write Thread %d: %s\n", n, data);
+
+   // pthread_mutex_unlock(&mutex);
+   pthread_exit(NULL);
+}
+
+int main()
+{
+   file = myfopen("test.txt", "w+");
+
+   if (file == NULL)
+   {
+      printf("Failed to open file.\n");
+      return 1;
+   }
+
+   pthread_t threads[NUM_THREADS];
+   int thread_args[NUM_THREADS];
+
+   // pthread_mutex_init(&mutex, NULL);
+
+   for (int i = 0; i < NUM_THREADS; i++)
+   {
+      thread_args[i] = i;
+      int * j = (int *) malloc(sizeof(int));
+      *j = i;
+      pthread_create(&threads[i], NULL, writeThread, (void *)j);
+   }
+
+   for (int i = 0; i < NUM_THREADS; i++)
+   {
+      pthread_join(threads[i], NULL);
+   }
+   myfseek(file, 0, SEEK_SET);
+
+   for (int i = 2; i < NUM_THREADS; i++)
+   {
+      thread_args[i] = i;
+      pthread_create(&threads[i], NULL, readThread, (void *)&thread_args[i]);
+   }
+
+   for (int i = 2; i < NUM_THREADS; i++)
+   {
+      pthread_join(threads[i], NULL);
+   }
+
+   // pthread_mutex_destroy(&mutex);
+
+   myfseek(file, 0, SEEK_SET);
+   myfread(buffer, sizeof(char), NUM_THREADS * 10, file);
+   buffer[NUM_THREADS * 10 + 1] = '\0'; // Null-terminate the buffer
+   // printf("Whole read : %s\n", buffer);
+
+   myfwrite(buffer, sizeof(char), NUM_THREADS * 10, file);
+
+   myfclose(file);
+
+   return 0;
+}
+
+/*#include <pthread.h>
 #include "../mystdio.h"
 #include <stdio.h>
 
@@ -74,7 +176,7 @@ int main() {
 
     return 0;
 }
-
+*/
 /*#include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>

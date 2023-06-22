@@ -167,7 +167,7 @@ myFILE *myfopen(const char *pathname, const char *mode) {
             break;
         case 'a':
             mode_flag=4;
-            if(strlen(mode)==1) fd = open(pathname, O_APPEND | O_CREAT | O_WRONLY, S_IRWXU);
+            if(strlen(mode)==1) fd = open(pathname, O_APPEND | O_CREAT | O_WRONLY, S_IRWXU); // S_IRWXU is 0700.
             else { fd = open(pathname, O_APPEND | O_CREAT | O_RDWR, S_IRWXU); mode_flag|=1; }
             break;
         default:
@@ -176,7 +176,7 @@ myFILE *myfopen(const char *pathname, const char *mode) {
     if(fd<0) return NULL;
     ret->fd = fd;
     ret->mode_flag = mode_flag;
-    ret->offset = 0; // Just in case.
+    ret->offset = 0; // Just in case. Not gonna use.
     ret->last_operation = 0;
     ret->bufpos = 0;
     return ret;
@@ -184,9 +184,7 @@ myFILE *myfopen(const char *pathname, const char *mode) {
 
 int myfclose(myFILE *stream){
     if(stream==NULL) return EOF;
-    //while(!lockThisFileAsExclusive(stream)); // We do not need while(!unlockThisFile(stream));, as the lock is cleared when fd is closed.
     if (myfflush(stream)) return EOF;
-    //while(!unlockThisFile(stream));
     if (close(stream->fd)) return EOF;
     free(stream);
     return 0;
@@ -195,11 +193,9 @@ int myfclose(myFILE *stream){
 int myfseek(myFILE *stream, int bufpos, int whence){
     if(stream==NULL) return EOF;
     while(!lockThisFileAsExclusive(stream));
-
-    //myfflush(stream);
     if(stream->last_operation==1) {
         if(_wflush(stream)==-1) {
-            while(!unlockThisFile(stream));//unlockThisFile(stream);
+            while(!unlockThisFile(stream));
             return -1;
         }
         stream->last_operation=0;
@@ -208,19 +204,20 @@ int myfseek(myFILE *stream, int bufpos, int whence){
         if(_rdrain(stream) == -1) return EOF;
     }
     if (lseek(stream->fd, bufpos, whence)<0) return EOF;
-    while(!unlockThisFile(stream)); //while(!unlockThisFile(stream));
+    while(!unlockThisFile(stream));
     return 0;
 }
 
 int myfread(void *ptr, int size, int nmemb, myFILE *stream){
     // Check if the stream is readable.
     if(stream==NULL) return EOF;
-    if(stream->mode_flag>1 && stream->mode_flag&1==0) return EOF;
+    // Fact: && operator precedes & operator.
+    if(stream->mode_flag>1 && (stream->mode_flag&1)==0) return EOF;
     while(!lockThisFileAsExclusive(stream)); // Nyum Nyum
     // _wflush() if the last operation was writing.
     if(stream->mode_flag>1 && stream->last_operation==1) {
         if(_wflush(stream)==-1) {
-            while(!unlockThisFile(stream));//unlockThisFile(stream);
+            while(!unlockThisFile(stream));
             return -1;
         }
     }
@@ -238,14 +235,13 @@ int myfread(void *ptr, int size, int nmemb, myFILE *stream){
             lseek(stream->fd, -r, SEEK_END);
             for(i=0, e=MIN(r, BUFSIZE);i<e;++i) {
                 stream->rdbuffer[i] = largebuf[size*q+i];
-                //((char*)ptr)[size*q+i] = 0; // just in case. // consider the original data that are deleted later!
             }
             ret = q*size;
         }
     }
     stream->last_operation=0;
     while(!unlockThisFile(stream));
-    // This is necessary for maintaining the data right after the ptr.
+    // This whole largebuf is necessary for maintaining the data right after the ptr.
     for(i=0;i<ret;++i) {
         ((char*)ptr)[i] = largebuf[i];
     }
@@ -270,27 +266,25 @@ int myfwrite(const void *ptr, int size, int nmemb, myFILE *stream) {
         ret += _wfill(stream, ((char*)ptr)+ret, siz-ret);
     }
     stream->last_operation=1;
-    //while(!unlockThisFile(stream));//unlockThisFile(stream);
     return ret/size;
 }
 
 int myfflush(myFILE *stream) {
     if(stream==NULL) return EOF;
-    //while(!lockThisFileAsExclusive(stream));
     if(stream->last_operation==1) {
         if(_wflush(stream)==-1) {
-            while(!unlockThisFile(stream));//unlockThisFile(stream);
+            while(!unlockThisFile(stream));
             return -1;
         }
         stream->last_operation=0;
     }
     else if(stream->bufpos!=0) {
         if(_rdrain(stream)==-1) {
-            while(!unlockThisFile(stream));//unlockThisFile(stream);
+            while(!unlockThisFile(stream));
             return -1;
         }
     }
-    while(!unlockThisFile(stream));//unlockThisFile(stream);
+    while(!unlockThisFile(stream));
     return 0;
 }
 

@@ -1,4 +1,5 @@
 /**
+ * Testing Multiprocess Concurrency.
  * myfopen 이후 프로세스를 생성하지 않고, fork() 등을 이용해 프로세스를 생성하는 부분 이후에 myfopen 을 통해 파일을 열도록 평가할 것입니다.
  * 
  * You may assume that test cases for grading will always be fork() -> myfopen(), not myfopen() -> fork().

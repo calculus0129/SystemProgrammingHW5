@@ -1,3 +1,6 @@
+/**
+ * exceptional cases (e.g. using myfwrite() or myfread() in inadequate mode)
+*/
 #include "../mystdio.h"
 #include <stdio.h>
 #include <assert.h>

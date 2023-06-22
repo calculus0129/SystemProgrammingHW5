@@ -1,3 +1,6 @@
+/**
+ * Testing: myfopen(), myfread().
+*/
 #include "../mystdio.h"
 
 int main() {
