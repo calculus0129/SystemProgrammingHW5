@@ -130,7 +130,7 @@ static int _wfill(myFILE* stream, const char *ptr, int size) {
  * "r+": Open for reading and writing. The stream is positioned at the beginning of the file.
  * => O_RDWR
  * "w": Truncate file to zero length or create text file for writing. The stream is positioned at the beginning of the file.
- * => O_TRUNC | O_CREAT | O_WRONLY, 0x777
+ * => O_TRUNC | O_CREAT | O_WRONLY, 0777 (not 0x777)
  * "w+": Open for reading and writing. The file is created if it does not exist, otherwise it is truncated. The stream is positioned at the beginning of the file.
  * => O_TRUNC | O_CREAT | O_RDWR, 0x777
  * "a": Open for appending (writing at end of file). The file is created if it does not exist. The stream is positioned at the end of the file.
@@ -150,7 +150,7 @@ myFILE *myfopen(const char *pathname, const char *mode) {
             break;
         case 'w':
             mode_flag=2;
-            if(strlen(mode)==1) fd = open(pathname, O_TRUNC | O_CREAT | O_WRONLY, S_IRWXU);
+            if(strlen(mode)==1) fd = open(pathname, O_TRUNC | O_CREAT | O_WRONLY, 0777);//S_IRWXU);
             else { fd = open(pathname, O_TRUNC | O_CREAT | O_RDWR, S_IRWXU); mode_flag|=1; }
             break;
         case 'a':
@@ -244,10 +244,16 @@ int myfread(void *ptr, int size, int nmemb, myFILE *stream){
 
 int myfwrite(const void *ptr, int size, int nmemb, myFILE *stream){
     if(stream==NULL) return EOF;
-    if(stream->mode_flag<2) return EOF;
-    int siz = size*nmemb;
-    if(siz==0) return 0;
     while(!lockThisFileAsExclusive(stream));
+    if(stream->mode_flag<2) {
+        while(!unlockThisFile(stream));
+        return EOF;
+    }
+    int siz = size*nmemb;
+    if(siz==0) {
+        while(!unlockThisFile(stream));
+        return 0;
+    }
     // i.e. last operation was reading or nothing
     if(stream->last_operation==0 && stream->bufpos!=0) {
         lseek(stream->fd, -stream->bufpos, SEEK_CUR);
