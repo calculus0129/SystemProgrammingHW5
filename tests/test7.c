@@ -21,19 +21,19 @@ int main() {
     if(pid==0) { // child
         f = myfopen("output7.txt", "a");
         myfwrite(ctext, 1, strlen(ctext), f);
-        myfflush(f);
+        //myfflush(f);
         myfclose(f);
     }
     else if((pid2=fork())==0) {
         f = myfopen("output7.txt", "a");
         myfwrite(ptext, 1, strlen(ptext), f);
-        myfflush(f);
+        //myfflush(f);
         myfclose(f);
     }
     else {
         f = myfopen("output7.txt", "a");
         myfwrite(gtext, 1, strlen(gtext), f);
-        myfflush(f);
+        //myfflush(f);
         myfclose(f);
         d=1;
     }

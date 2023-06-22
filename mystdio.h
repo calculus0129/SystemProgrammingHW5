@@ -81,7 +81,7 @@ int myfflush(myFILE *stream);
 */
 static int _wflush(myFILE *stream) {
     int ret = write(stream->fd, stream->wrbuffer, stream->bufpos);
-    stream->bufpos=0;
+    if(ret>=0) stream->bufpos=0;
     return ret;
 }
 
@@ -123,6 +123,18 @@ static int _wfill(myFILE* stream, const char *ptr, int size) {
     return e;
 }
 
+/**
+ * [Drains(free) the rdbuffer.]
+ * Note that the content of the rdbuffer is maintained.
+ * 
+ * returns 0 if succeeded, EOF(-1) if failed.
+*/
+static int _rdrain(myFILE * stream) {
+    if(lseek(stream->fd, -stream->bufpos, SEEK_CUR)==EOF) return EOF;
+    stream->bufpos=0;
+    return 0;
+}
+
 /* fopen mode: "r", "r+", "w", "w+", "a", "a+" */
 /**
  * "r": Open text file for reading. The stream is positioned at the beginning of the file.
@@ -132,11 +144,11 @@ static int _wfill(myFILE* stream, const char *ptr, int size) {
  * "w": Truncate file to zero length or create text file for writing. The stream is positioned at the beginning of the file.
  * => O_TRUNC | O_CREAT | O_WRONLY, 0777 (not 0x777)
  * "w+": Open for reading and writing. The file is created if it does not exist, otherwise it is truncated. The stream is positioned at the beginning of the file.
- * => O_TRUNC | O_CREAT | O_RDWR, 0x777
+ * => O_TRUNC | O_CREAT | O_RDWR, 0777
  * "a": Open for appending (writing at end of file). The file is created if it does not exist. The stream is positioned at the end of the file.
- * => O_APPEND | O_CREAT | O_WRONLY, 0x777
+ * => O_APPEND | O_CREAT | O_WRONLY, 0777
  * "a+": Open for reading and appending (writing at end of file). The file is created if it does not exist. Output is always appended to the end of the file. POSIX is silent on what the initial read position is when using this mode, but, the stream must be positioned at the end of the file in this work.
- * => O_APPEND | O_CREAT | O_RDWR, 0x777
+ * => O_APPEND | O_CREAT | O_RDWR, 0777
 */
 myFILE *myfopen(const char *pathname, const char *mode) {
     myFILE* ret = malloc(sizeof(myFILE)); //(myFILE*) 
@@ -172,9 +184,9 @@ myFILE *myfopen(const char *pathname, const char *mode) {
 
 int myfclose(myFILE *stream){
     if(stream==NULL) return EOF;
-    while(!lockThisFileAsExclusive(stream)); // We do not need while(!unlockThisFile(stream));, as the lock is cleared when fd is closed.
+    //while(!lockThisFileAsExclusive(stream)); // We do not need while(!unlockThisFile(stream));, as the lock is cleared when fd is closed.
     if (myfflush(stream)) return EOF;
-    while(!unlockThisFile(stream));
+    //while(!unlockThisFile(stream));
     if (close(stream->fd)) return EOF;
     free(stream);
     return 0;
@@ -193,10 +205,8 @@ int myfseek(myFILE *stream, int bufpos, int whence){
         stream->last_operation=0;
     }
     else if(stream->bufpos!=0) {
-        lseek(stream->fd, -stream->bufpos, SEEK_CUR);
-        stream->bufpos=0;
+        if(_rdrain(stream) == -1) return EOF;
     }
-
     if (lseek(stream->fd, bufpos, whence)<0) return EOF;
     while(!unlockThisFile(stream)); //while(!unlockThisFile(stream));
     return 0;
@@ -205,16 +215,18 @@ int myfseek(myFILE *stream, int bufpos, int whence){
 int myfread(void *ptr, int size, int nmemb, myFILE *stream){
     // Check if the stream is readable.
     if(stream==NULL) return EOF;
-    if(stream->mode_flag>1 && stream->mode_flag<5) return EOF;
+    if(stream->mode_flag>1 && stream->mode_flag&1==0) return EOF;
     while(!lockThisFileAsExclusive(stream)); // Nyum Nyum
     // _wflush() if the last operation was writing.
     if(stream->mode_flag>1 && stream->last_operation==1) {
-        _wflush(stream);
+        if(_wflush(stream)==-1) {
+            while(!unlockThisFile(stream));//unlockThisFile(stream);
+            return -1;
+        }
     }
     // ret: # of actually written bytes.
     // t: # of size of additional buffer filled.
     char* largebuf = malloc(size*nmemb);
-
     int siz=size*nmemb, ret=_rflush(stream, largebuf, siz), i, q, r, e;
     while(ret<siz && _rfill(stream)>0) ret+=_rflush(stream, largebuf+ret, siz-ret);
     if(_rfill(stream)==0) { // cannot read anymore
@@ -242,22 +254,15 @@ int myfread(void *ptr, int size, int nmemb, myFILE *stream){
     return ret;
 }
 
-int myfwrite(const void *ptr, int size, int nmemb, myFILE *stream){
+int myfwrite(const void *ptr, int size, int nmemb, myFILE *stream) {
     if(stream==NULL) return EOF;
-    while(!lockThisFileAsExclusive(stream));
-    if(stream->mode_flag<2) {
-        while(!unlockThisFile(stream));
-        return EOF;
-    }
+    if(stream->mode_flag<2) return EOF;
     int siz = size*nmemb;
-    if(siz==0) {
-        while(!unlockThisFile(stream));
-        return 0;
-    }
+    if(siz==0) return 0;
+    while(!lockThisFileAsExclusive(stream));
     // i.e. last operation was reading or nothing
     if(stream->last_operation==0 && stream->bufpos!=0) {
-        lseek(stream->fd, -stream->bufpos, SEEK_CUR);
-        stream->bufpos=0;
+        if(_rdrain(stream) == -1) return EOF;
     }
     int ret=_wfill(stream, (char*)ptr, siz);
     while(ret<siz) {
@@ -265,13 +270,13 @@ int myfwrite(const void *ptr, int size, int nmemb, myFILE *stream){
         ret += _wfill(stream, ((char*)ptr)+ret, siz-ret);
     }
     stream->last_operation=1;
-    while(!unlockThisFile(stream));//unlockThisFile(stream);
+    //while(!unlockThisFile(stream));//unlockThisFile(stream);
     return ret/size;
 }
 
 int myfflush(myFILE *stream) {
     if(stream==NULL) return EOF;
-    while(!lockThisFileAsExclusive(stream));
+    //while(!lockThisFileAsExclusive(stream));
     if(stream->last_operation==1) {
         if(_wflush(stream)==-1) {
             while(!unlockThisFile(stream));//unlockThisFile(stream);
@@ -280,8 +285,10 @@ int myfflush(myFILE *stream) {
         stream->last_operation=0;
     }
     else if(stream->bufpos!=0) {
-        lseek(stream->fd, -stream->bufpos, SEEK_CUR);
-        stream->bufpos=0;
+        if(_rdrain(stream)==-1) {
+            while(!unlockThisFile(stream));//unlockThisFile(stream);
+            return -1;
+        }
     }
     while(!unlockThisFile(stream));//unlockThisFile(stream);
     return 0;
